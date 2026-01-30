@@ -12,11 +12,12 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="6c3f08b3-26f9-40f8-9c50-9186a4f50171" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/src/display.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/git.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/primitives.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/cli.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/cli.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/core.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/core.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/core.rs" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -52,6 +53,7 @@
     "Cargo.Run r-git-fu.executor": "Run",
     "Cargo.Test core::tests::test_gather_git_status (1).executor": "Run",
     "Cargo.Test core::tests::test_gather_git_status.executor": "Run",
+    "Cargo.Test git::tests::test_tables.executor": "Run",
     "Cargo.Test r-git-fu.executor": "Run",
     "ModuleVcsDetector.initialDetectionPerformed": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
@@ -76,7 +78,7 @@
       <recent name="$PROJECT_DIR$" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.All Tests">
+  <component name="RunManager" selected="Cargo.Test git::tests::test_tables">
     <configuration name="All Tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="buildProfileId" value="test" />
       <option name="command" value="test" />
@@ -153,6 +155,25 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
+    <configuration name="Test git::tests::test_tables" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package r-git-fu --bin r-git-fu git::tests::test_tables -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <envs>
+        <env name="FU_TEST_REPO" value="$PROJECT_DIR$/../../mbtp/mbtp-build" />
+      </envs>
+      <option name="emulateTerminal" value="true" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
     <configuration name="Test r-git-fu" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
       <option name="buildProfileId" value="test" />
       <option name="command" value="test --workspace" />
@@ -196,11 +217,13 @@
       <item itemvalue="Cargo.Run r-git-fu" />
       <item itemvalue="Cargo.Test r-git-fu" />
       <item itemvalue="Cargo.Test core::tests::test_gather_git_status (1)" />
+      <item itemvalue="Cargo.Test git::tests::test_tables" />
       <item itemvalue="Cargo.All Tests" />
       <item itemvalue="Cargo.Test core::tests::test_gather_git_status" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test git::tests::test_tables" />
         <item itemvalue="Cargo.All Tests" />
         <item itemvalue="Cargo.Test core::tests::test_gather_git_status" />
       </list>
@@ -222,17 +245,6 @@
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
-  </component>
-  <component name="XDebuggerManager">
-    <breakpoint-manager>
-      <breakpoints>
-        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
-          <url>file://$PROJECT_DIR$/src/core.rs</url>
-          <line>385</line>
-          <option name="timeStamp" value="2" />
-        </line-breakpoint>
-      </breakpoints>
-    </breakpoint-manager>
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/r_git_fu$All_Tests.info" NAME="All Tests Coverage Results" MODIFIED="1769731012991" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="RsCoverageRunner" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" CONTEXT_FILE_PATH="$PROJECT_DIR$" />

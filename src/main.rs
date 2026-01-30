@@ -1,9 +1,11 @@
 mod cli;
-mod core;
+mod primitives;
+mod git;
+mod display;
 
 use crate::cli::{dir_status, dump_branches, get_prompt, Cli, Command};
 
-use crate::core::FuError;
+use crate::primitives::FuError;
 use clap::Parser;
 
 fn main() -> Result<(), FuError> {
