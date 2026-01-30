@@ -158,6 +158,8 @@ pub fn get_multi_directory_status(
 
 pub fn print_repo_table(result_option: Option<HashMap<String, RepoStatus>>) {
     if let Some(results) = result_option {
+        let mut rows: Vec<_> = results.into_iter().collect();
+        rows.sort_by(|a, b| a.0.cmp(&b.0));
         let mut table = Table::new();
         table
             .set_content_arrangement(comfy_table::ContentArrangement::Dynamic)
@@ -171,7 +173,7 @@ pub fn print_repo_table(result_option: Option<HashMap<String, RepoStatus>>) {
                 Cell::new("Position"),
             ]);
 
-        for (name, status) in results {
+        for (name, status) in rows {
             let dirty_val = if status.dirty.worktree + status.dirty.index == 0 {
                 "".to_string()
             } else {
