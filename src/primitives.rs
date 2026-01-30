@@ -15,7 +15,14 @@ pub struct RepoStatus {
 }
 
 impl RepoStatus {
-
+    pub fn broken_state(broken_state: String) -> Self {
+        RepoStatus {
+            branch: BranchState::Named(broken_state),
+            dirty: DirtyState {worktree:0, index:0},
+            position: None,
+            head_oid: git2::Oid::zero(),
+        }
+    }
 
     pub fn branch_name(&self, colour_flag: bool) -> String {
         let mut branch_str = match &self.branch {
