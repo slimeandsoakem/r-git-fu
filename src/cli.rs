@@ -1,4 +1,6 @@
-use crate::core::{console_dump, gather_git_repo, get_branch_info, get_multi_directory_status, get_repo_state, print_repo_table, FuError};
+use crate::display::{console_dump};
+use crate::git::{gather_git_repo, get_branch_info, get_multi_directory_status, get_repo_state, print_repo_table};
+use crate::primitives::FuError;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 

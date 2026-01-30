@@ -1,146 +1,10 @@
-use chrono::{DateTime, TimeZone, Utc};
+use crate::primitives::{BranchInfo, BranchState, DirtyState, FuError, Position, RepoStatus};
 use comfy_table::modifiers::UTF8_ROUND_CORNERS;
-use comfy_table::presets::UTF8_FULL;
-use comfy_table::{Cell, Table};
-use git2::BranchType;
-use git2::{Error as Git2Error, Reference, Repository};
-use owo_colors::OwoColorize;
+use comfy_table::presets::{ASCII_BORDERS_ONLY_CONDENSED};
+use comfy_table::{Cell, Color, Table};
+use git2::{BranchType, Reference, Repository};
 use std::collections::HashMap;
-use std::env::VarError;
-use std::fmt::Display;
-use std::io::Error as IoError;
-use std::io::{self, Write};
 use std::path::PathBuf;
-use thiserror::Error as ThisError;
-
-#[derive(Debug)]
-pub struct RepoStatus {
-    pub branch: BranchState,
-    pub dirty: DirtyState,
-    pub position: Option<Position>,
-    pub head_oid: git2::Oid,
-}
-
-impl RepoStatus {
-    pub fn branch_name(&self) -> String {
-        let branch_str = match &self.branch {
-            BranchState::Named(name) => name.clone().magenta().to_string(),
-            BranchState::Detached => format!("{}", &self.head_oid.to_string()[..7])
-                .cyan()
-                .to_string(),
-        };
-        branch_str
-    }
-
-    pub fn position_marker(&self) -> String {
-        let mut pos = String::new();
-        if let Some(position) = &self.position {
-            if position.ahead > 0 {
-                pos.push_str(&format!("↑{}", position.ahead));
-            }
-            if position.behind > 0 {
-                if !pos.is_empty() {
-                    pos.push(' ');
-                }
-                pos.push_str(&format!("↓{}", position.behind));
-            }
-        }
-        pos
-    }
-
-    pub fn dirty_marker(&self) -> String {
-        let mut dirty = String::new();
-        if self.dirty.index > 0 {
-            dirty.push_str(&format!("●{}", self.dirty.index).red().to_string());
-        }
-        if self.dirty.worktree > 0 {
-            dirty.push_str(&format!("+{}", self.dirty.worktree).blue().to_string());
-        }
-
-        if self.dirty.index == 0 && self.dirty.worktree == 0 {
-            dirty.push_str(&'✔'.green().to_string()); // green tick
-        }
-        dirty
-    }
-}
-
-impl Display for RepoStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let branch_str = self.branch_name();
-        let position_str = self.position_marker();
-        let dirty = self.dirty_marker();
-
-        let mut parts: Vec<String> = vec![branch_str];
-        if !position_str.is_empty() || !dirty.is_empty() {
-            parts.push(format!("{}|{}", position_str, dirty));
-        }
-
-        write!(f, "({})", parts.join(""))
-    }
-}
-
-#[derive(Debug)]
-pub struct Position {
-    pub ahead: usize,
-    pub behind: usize,
-}
-
-#[derive(Debug)]
-pub enum BranchState {
-    Named(String),
-    Detached,
-}
-
-#[derive(Debug)]
-pub struct DirtyState {
-    pub worktree: usize, // number of uncommitted changes in worktree
-    pub index: usize,    // number of staged changes
-}
-
-#[derive(Debug)]
-pub struct BranchInfo {
-    pub name: String,
-    pub commit_time: i64,
-    pub iso_date: String,
-    pub delta: String,
-}
-impl Display for BranchInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        format!(
-            "{} {} {}",
-            &self.iso_date.green(),
-            &self.delta.blue(),
-            &self.name.white()
-        )
-        .fmt(f)
-    }
-}
-
-#[derive(ThisError, Debug)]
-pub enum FuError {
-    #[error("{0}")]
-    Custom(String),
-
-    #[error(transparent)]
-    Git2Error(#[from] Git2Error),
-
-    #[error(transparent)]
-    VarError(#[from] VarError),
-
-    #[error(transparent)]
-    IoError(#[from] IoError),
-}
-
-fn safe_println(s: &str) {
-    if let Err(e) = writeln!(io::stdout(), "{}", s) {
-        if e.kind() != io::ErrorKind::BrokenPipe {
-            // Only panic for other IO errors
-            panic!("stdout error: {}", e);
-        }
-        // Broken pipe: exit silently
-        std::process::exit(0);
-    }
-}
 
 pub fn gather_git_repo(path_buf: &PathBuf) -> Result<Repository, FuError> {
     let git_dir = path_buf.join(".git");
@@ -156,24 +20,6 @@ pub fn gather_git_repo(path_buf: &PathBuf) -> Result<Repository, FuError> {
     Ok(repo)
 }
 
-fn timestamp_to_datetime(ts: i64) -> Result<DateTime<Utc>, FuError> {
-    let timestamp = Utc
-        .timestamp_opt(ts, 0)
-        .single()
-        .ok_or(FuError::Custom("Time out of range".to_string()))?;
-    Ok(timestamp)
-}
-fn format_commit_time(ts: i64) -> Result<(String, String), FuError> {
-    let datetime = timestamp_to_datetime(ts)?;
-    let iso_date = format!("{}", datetime.format("%Y-%m-%d %H:%M:%S"));
-    let delta = format!(
-        "{}",
-        humantime::format_duration(std::time::Duration::from_secs(
-            (Utc::now().timestamp() - ts) as u64
-        ))
-    );
-    Ok((iso_date, delta))
-}
 pub fn get_branch_info(repo: &Repository) -> Result<Option<Vec<BranchInfo>>, FuError> {
     let mut branches = Vec::new();
     for branch in repo.branches(Some(BranchType::Local))? {
@@ -181,7 +27,7 @@ pub fn get_branch_info(repo: &Repository) -> Result<Option<Vec<BranchInfo>>, FuE
         let name = branch.name()?.unwrap().to_string();
 
         let commit = branch.get().peel_to_commit()?;
-        let (iso_date, delta) = format_commit_time(commit.time().seconds())?;
+        let (iso_date, delta) = crate::display::format_commit_time(commit.time().seconds())?;
 
         branches.push(BranchInfo {
             name,
@@ -198,18 +44,7 @@ pub fn get_branch_info(repo: &Repository) -> Result<Option<Vec<BranchInfo>>, FuE
     }
 }
 
-pub fn console_dump<T>(outbound_array: Option<Vec<T>>)
-where
-    T: Display,
-{
-    if let Some(vec) = outbound_array {
-        for x in vec {
-            safe_println(&format!("{}", x));
-        }
-    }
-}
-
-fn get_position(head_ref: &Reference, repo: &Repository) -> Result<Option<Position>, FuError> {
+pub fn get_position(head_ref: &Reference, repo: &Repository) -> Result<Option<Position>, FuError> {
     // Detached HEAD → skip
     if !head_ref.is_branch() {
         return Ok(None);
@@ -229,7 +64,7 @@ fn get_position(head_ref: &Reference, repo: &Repository) -> Result<Option<Positi
     Ok(Some(Position { ahead, behind }))
 }
 
-fn get_branch_state(head_ref: &Reference) -> Result<BranchState, FuError> {
+pub fn get_branch_state(head_ref: &Reference) -> Result<BranchState, FuError> {
     let branch = if head_ref.is_branch() {
         BranchState::Named(
             head_ref
@@ -243,7 +78,7 @@ fn get_branch_state(head_ref: &Reference) -> Result<BranchState, FuError> {
     Ok(branch)
 }
 
-fn get_dirty(repo: &Repository) -> Result<DirtyState, FuError> {
+pub fn get_dirty(repo: &Repository) -> Result<DirtyState, FuError> {
     let mut opts = git2::StatusOptions::new();
     opts.include_untracked(true)
         .recurse_untracked_dirs(true)
@@ -319,9 +154,9 @@ pub fn print_repo_table(result_option: Option<HashMap<String, RepoStatus>>) {
     if let Some(results) = result_option {
         let mut table = Table::new();
         table
-            .set_content_arrangement(comfy_table::ContentArrangement::Disabled)
+            .set_content_arrangement(comfy_table::ContentArrangement::Dynamic)
             .apply_modifier(UTF8_ROUND_CORNERS);
-        table.load_preset(UTF8_FULL).set_header(vec![
+        table.load_preset(ASCII_BORDERS_ONLY_CONDENSED).set_header(vec![
             Cell::new("Repo"),
             Cell::new("Branch"),
             Cell::new("Dirty"),
@@ -329,11 +164,45 @@ pub fn print_repo_table(result_option: Option<HashMap<String, RepoStatus>>) {
         ]);
 
         for (name, status) in results {
+            let dirty_val = if status.dirty.worktree + status.dirty.index == 0 {
+                "".to_string()
+            } else {
+                format!("●{}+{}", status.dirty.worktree, status.dirty.index)
+            };
+
+            let dirty_cell = if dirty_val.is_empty() {
+                Cell::new("").fg(Color::Red)
+            } else {
+                Cell::new(&dirty_val).fg(Color::Red)
+            };
+
+            let position_val = match &status.position {
+                Some(pos) if pos.ahead > 0 || pos.behind > 0 => {
+                    format!("↑{} ↓{}", pos.ahead, pos.behind)
+                }
+                _ => "".to_string(),
+            };
+
+            let position_cell = if position_val.is_empty() {
+                Cell::new("").fg(Color::Green)
+            } else {
+                Cell::new(&position_val).fg(Color::Green)
+            };
+
+
+
+            let (branch_cell, name_cell) = if dirty_val.is_empty() && position_val.is_empty() {
+                (Cell::new(name).fg(Color::White), Cell::new(&status.branch_name(false)).fg(Color::White))
+            } else {
+                (Cell::new(name).fg(Color::Yellow), Cell::new(&status.branch_name(false)).fg(Color::Yellow))
+            };
+
+                Cell::new(&status.branch_name(false));
             table.add_row(vec![
-                Cell::new(name),
-                Cell::new(status.branch_name()),
-                Cell::new(format!("{:<6}", status.dirty_marker())),
-                Cell::new(format!("{:<8}", status.position_marker())),
+                name_cell,
+                branch_cell,
+                dirty_cell,
+                position_cell,
             ]);
         }
 
@@ -345,6 +214,7 @@ pub fn print_repo_table(result_option: Option<HashMap<String, RepoStatus>>) {
 mod tests {
     use super::*;
     use crate::cli::{dump_branches, get_prompt};
+    use crate::display::format_commit_time;
 
     pub fn full_commit_history(repo: &Repository) -> Result<(), FuError> {
         let mut reverse_walk = repo.revwalk()?;
@@ -380,6 +250,27 @@ mod tests {
             "/Users/Simon/Documents/dataoperations/projects/bics/code/mbtp",
         ))?;
         print_repo_table(full_results);
+        Ok(())
+    }
+
+    #[test]
+    fn test_tables() -> Result<(), FuError> {
+        let test_state_row = RepoStatus {
+            branch: BranchState::Named("test".to_string()),
+            dirty: DirtyState {
+                worktree: 1,
+                index: 2,
+            },
+            position: Some(Position {
+                ahead: 2,
+                behind: 3,
+            }),
+            head_oid: git2::Oid::zero(),
+        };
+        let mut sample_output: HashMap<String, RepoStatus> = HashMap::new();
+        sample_output.insert("long_name_to_test".to_string(), test_state_row);
+        print_repo_table(Some(sample_output));
+
         Ok(())
     }
 }
