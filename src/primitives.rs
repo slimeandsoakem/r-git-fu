@@ -18,15 +18,15 @@ impl RepoStatus {
 
 
     pub fn branch_name(&self, colour_flag: bool) -> String {
-        let branch_str = match &self.branch {
+        let mut branch_str = match &self.branch {
             BranchState::Named(name) => name.clone().to_string(),
             BranchState::Detached => format!("{}", &self.head_oid.to_string()[..7])
                 .to_string(),
         };
         if colour_flag {
             match &self.branch {
-                BranchState::Named(_name) => branch_str.magenta().to_string(),
-                BranchState::Detached => branch_str.cyan().to_string(),
+                BranchState::Named(_name) => branch_str = branch_str.magenta().to_string(),
+                BranchState::Detached => branch_str = branch_str.cyan().to_string(),
             };
         }
         branch_str
