@@ -1,6 +1,6 @@
 use crate::primitives::{BranchInfo, BranchState, DirtyState, FuError, Position, RepoStatus};
 use comfy_table::modifiers::UTF8_ROUND_CORNERS;
-use comfy_table::presets::{ASCII_BORDERS_ONLY_CONDENSED};
+use comfy_table::presets::ASCII_BORDERS_ONLY_CONDENSED;
 use comfy_table::{Cell, Color, Table};
 use git2::{BranchType, Reference, Repository};
 use std::collections::HashMap;
@@ -135,11 +135,17 @@ pub fn get_multi_directory_status(
     let mut status_results: HashMap<String, RepoStatus> = HashMap::new();
     for dir in dirs {
         let repo_result = gather_git_repo(&dir);
+        let name_osstr = dir
+            .file_name()
+            .ok_or(FuError::Custom("Cannot determine name".to_string()))?;
+        let name = name_osstr.to_string_lossy().to_string();
+
         if let Ok(repo) = repo_result {
-            let repo_status = get_repo_state(&repo)?;
-            if let Some(name_osstr) = dir.file_name() {
-                let name = name_osstr.to_string_lossy().to_string();
+            let repo_status_result = get_repo_state(&repo);
+            if let Ok(repo_status) = repo_status_result {
                 status_results.insert(name, repo_status);
+            } else {
+                status_results.insert(name, RepoStatus::broken_state("broken-head".to_string()));
             }
         }
     }
@@ -156,12 +162,14 @@ pub fn print_repo_table(result_option: Option<HashMap<String, RepoStatus>>) {
         table
             .set_content_arrangement(comfy_table::ContentArrangement::Dynamic)
             .apply_modifier(UTF8_ROUND_CORNERS);
-        table.load_preset(ASCII_BORDERS_ONLY_CONDENSED).set_header(vec![
-            Cell::new("Repo"),
-            Cell::new("Branch"),
-            Cell::new("Dirty"),
-            Cell::new("Position"),
-        ]);
+        table
+            .load_preset(ASCII_BORDERS_ONLY_CONDENSED)
+            .set_header(vec![
+                Cell::new("Repo"),
+                Cell::new("Branch"),
+                Cell::new("Dirty"),
+                Cell::new("Position"),
+            ]);
 
         for (name, status) in results {
             let dirty_val = if status.dirty.worktree + status.dirty.index == 0 {
@@ -189,20 +197,26 @@ pub fn print_repo_table(result_option: Option<HashMap<String, RepoStatus>>) {
                 Cell::new(&position_val).fg(Color::Green)
             };
 
+            let (name_cell, branch_cell) =
+                match (dirty_val.is_empty(), position_val.is_empty(), status.head_oid.is_zero()) {
+                    (true, true, false) => {
+                        (Cell::new(name).fg(Color::White),
+                        Cell::new(&status.branch_name(false)).fg(Color::White))
+                    },
+                    (true, true, true) => {
+                        (
+                            Cell::new(name).fg(Color::Magenta),
+                            Cell::new(&status.branch_name(false)).fg(Color::Magenta),
+                        )
+                    }
+                    _ => (
+                        Cell::new(name).fg(Color::White),
+                        Cell::new(&status.branch_name(false)).fg(Color::White),
+                    ),
 
+                };
 
-            let (name_cell, branch_cell) = if dirty_val.is_empty() && position_val.is_empty() {
-                (Cell::new(name).fg(Color::White), Cell::new(&status.branch_name(false)).fg(Color::White))
-            } else {
-                (Cell::new(name).fg(Color::Yellow), Cell::new(&status.branch_name(false)).fg(Color::Yellow))
-            };
-
-            table.add_row(vec![
-                name_cell,
-                branch_cell,
-                dirty_cell,
-                position_cell,
-            ]);
+            table.add_row(vec![name_cell, branch_cell, dirty_cell, position_cell]);
         }
 
         println!("{}", table);
@@ -244,7 +258,7 @@ mod tests {
 
         let repo_state = get_repo_state(&repo)?;
         println!("{}", repo_state);
-        
+
         Ok(())
     }
 
