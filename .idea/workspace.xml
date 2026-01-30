@@ -12,13 +12,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="6c3f08b3-26f9-40f8-9c50-9186a4f50171" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/src/display.rs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/git.rs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/primitives.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/cli.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/cli.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/core.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/git.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/git.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -60,7 +55,7 @@
     "RunOnceActivity.git.unshallow": "true",
     "RunOnceActivity.rust.reset.selective.auto.import": "true",
     "RunOnceActivity.typescript.service.memoryLimit.init": "true",
-    "git-widget-placeholder": "gix",
+    "git-widget-placeholder": "defect__fix__a",
     "last_opened_file_path": "/Users/Simon/Documents/dataoperations/projects/bics/code/github/r-git-fu",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",

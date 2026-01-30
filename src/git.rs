@@ -191,13 +191,12 @@ pub fn print_repo_table(result_option: Option<HashMap<String, RepoStatus>>) {
 
 
 
-            let (branch_cell, name_cell) = if dirty_val.is_empty() && position_val.is_empty() {
+            let (name_cell, branch_cell) = if dirty_val.is_empty() && position_val.is_empty() {
                 (Cell::new(name).fg(Color::White), Cell::new(&status.branch_name(false)).fg(Color::White))
             } else {
                 (Cell::new(name).fg(Color::Yellow), Cell::new(&status.branch_name(false)).fg(Color::Yellow))
             };
 
-                Cell::new(&status.branch_name(false));
             table.add_row(vec![
                 name_cell,
                 branch_cell,
