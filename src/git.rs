@@ -244,11 +244,7 @@ mod tests {
 
         let repo_state = get_repo_state(&repo)?;
         println!("{}", repo_state);
-
-        let full_results = get_multi_directory_status(&PathBuf::from(
-            "/Users/Simon/Documents/dataoperations/projects/bics/code/mbtp",
-        ))?;
-        print_repo_table(full_results);
+        
         Ok(())
     }
 
