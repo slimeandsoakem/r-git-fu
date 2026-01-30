@@ -13,7 +13,6 @@
   <component name="ChangeListManager">
     <list default="true" id="6c3f08b3-26f9-40f8-9c50-9186a4f50171" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/git.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/git.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -73,7 +72,7 @@
       <recent name="$PROJECT_DIR$" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.Test git::tests::test_tables">
+  <component name="RunManager" selected="Cargo.All Tests">
     <configuration name="All Tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="buildProfileId" value="test" />
       <option name="command" value="test" />
@@ -218,8 +217,8 @@
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Cargo.Test git::tests::test_tables" />
         <item itemvalue="Cargo.All Tests" />
+        <item itemvalue="Cargo.Test git::tests::test_tables" />
         <item itemvalue="Cargo.Test core::tests::test_gather_git_status" />
       </list>
     </recent_temporary>
