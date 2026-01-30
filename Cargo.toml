@@ -1,0 +1,12 @@
+[package]
+name = "r-git-fu"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.5.54", features = ["derive"] }
+git2 = "0.20.3"
+thiserror = "2.0.18"
+chrono = "0.4.43"
+humantime = "2.3.0"
+owo-colors = "4.2.3"
