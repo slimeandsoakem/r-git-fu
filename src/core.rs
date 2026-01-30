@@ -1,9 +1,14 @@
 use chrono::{DateTime, TimeZone, Utc};
+use comfy_table::modifiers::UTF8_ROUND_CORNERS;
+use comfy_table::presets::UTF8_FULL;
+use comfy_table::{Cell, Table};
 use git2::BranchType;
 use git2::{Error as Git2Error, Reference, Repository};
 use owo_colors::OwoColorize;
+use std::collections::HashMap;
 use std::env::VarError;
 use std::fmt::Display;
+use std::io::Error as IoError;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use thiserror::Error as ThisError;
@@ -16,16 +21,18 @@ pub struct RepoStatus {
     pub head_oid: git2::Oid,
 }
 
-impl Display for RepoStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl RepoStatus {
+    pub fn branch_name(&self) -> String {
         let branch_str = match &self.branch {
             BranchState::Named(name) => name.clone().magenta().to_string(),
             BranchState::Detached => format!("{}", &self.head_oid.to_string()[..7])
                 .cyan()
                 .to_string(),
         };
+        branch_str
+    }
 
-        // Position symbols
+    pub fn position_marker(&self) -> String {
         let mut pos = String::new();
         if let Some(position) = &self.position {
             if position.ahead > 0 {
@@ -38,7 +45,10 @@ impl Display for RepoStatus {
                 pos.push_str(&format!("↓{}", position.behind));
             }
         }
+        pos
+    }
 
+    pub fn dirty_marker(&self) -> String {
         let mut dirty = String::new();
         if self.dirty.index > 0 {
             dirty.push_str(&format!("●{}", self.dirty.index).red().to_string());
@@ -50,14 +60,22 @@ impl Display for RepoStatus {
         if self.dirty.index == 0 && self.dirty.worktree == 0 {
             dirty.push_str(&'✔'.green().to_string()); // green tick
         }
+        dirty
+    }
+}
 
-        // Combine
-        let mut parts = vec![branch_str];
-        if !pos.is_empty() || !dirty.is_empty() {
-            parts.push(format!("{}|{}", pos, dirty));
+impl Display for RepoStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let branch_str = self.branch_name();
+        let position_str = self.position_marker();
+        let dirty = self.dirty_marker();
+
+        let mut parts: Vec<String> = vec![branch_str];
+        if !position_str.is_empty() || !dirty.is_empty() {
+            parts.push(format!("{}|{}", position_str, dirty));
         }
 
-        write!(f, "{}", parts.join(""))
+        write!(f, "({})", parts.join(""))
     }
 }
 
@@ -108,11 +126,14 @@ pub enum FuError {
 
     #[error(transparent)]
     VarError(#[from] VarError),
+
+    #[error(transparent)]
+    IoError(#[from] IoError),
 }
 
 fn safe_println(s: &str) {
     if let Err(e) = writeln!(io::stdout(), "{}", s) {
-        if e.kind() != std::io::ErrorKind::BrokenPipe {
+        if e.kind() != io::ErrorKind::BrokenPipe {
             // Only panic for other IO errors
             panic!("stdout error: {}", e);
         }
@@ -121,7 +142,7 @@ fn safe_println(s: &str) {
     }
 }
 
-pub fn gather_git_repo(path_buf: PathBuf) -> Result<Repository, FuError> {
+pub fn gather_git_repo(path_buf: &PathBuf) -> Result<Repository, FuError> {
     let git_dir = path_buf.join(".git");
 
     if !git_dir.exists() || !git_dir.is_dir() {
@@ -131,7 +152,7 @@ pub fn gather_git_repo(path_buf: PathBuf) -> Result<Repository, FuError> {
         )));
     }
 
-    let repo = git2::Repository::discover(path_buf)?;
+    let repo = Repository::discover(path_buf)?;
     Ok(repo)
 }
 
@@ -264,15 +285,66 @@ pub fn get_repo_state(repo: &Repository) -> Result<RepoStatus, FuError> {
     })
 }
 
-pub fn dump_branches(repo: &Repository) -> Result<(), FuError> {
-    let branch_info = get_branch_info(&repo)?;
-    console_dump(branch_info);
-    Ok(())
+pub fn get_multi_directory_status(
+    path_buf: &PathBuf,
+) -> Result<Option<HashMap<String, RepoStatus>>, FuError> {
+    let mut dirs = Vec::new();
+    for entry in std::fs::read_dir(path_buf)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            dirs.push(path);
+        }
+    }
+
+    let mut status_results: HashMap<String, RepoStatus> = HashMap::new();
+    for dir in dirs {
+        let repo_result = gather_git_repo(&dir);
+        if let Ok(repo) = repo_result {
+            let repo_status = get_repo_state(&repo)?;
+            if let Some(name_osstr) = dir.file_name() {
+                let name = name_osstr.to_string_lossy().to_string();
+                status_results.insert(name, repo_status);
+            }
+        }
+    }
+    if status_results.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(status_results))
+    }
+}
+
+pub fn print_repo_table(result_option: Option<HashMap<String, RepoStatus>>) {
+    if let Some(results) = result_option {
+        let mut table = Table::new();
+        table
+            .set_content_arrangement(comfy_table::ContentArrangement::Disabled)
+            .apply_modifier(UTF8_ROUND_CORNERS);
+        table.load_preset(UTF8_FULL).set_header(vec![
+            Cell::new("Repo"),
+            Cell::new("Branch"),
+            Cell::new("Dirty"),
+            Cell::new("Position"),
+        ]);
+
+        for (name, status) in results {
+            table.add_row(vec![
+                Cell::new(name),
+                Cell::new(status.branch_name()),
+                Cell::new(format!("{:<6}", status.dirty_marker())),
+                Cell::new(format!("{:<8}", status.position_marker())),
+            ]);
+        }
+
+        println!("{}", table);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::{dump_branches, get_prompt};
 
     pub fn full_commit_history(repo: &Repository) -> Result<(), FuError> {
         let mut reverse_walk = repo.revwalk()?;
@@ -296,13 +368,18 @@ mod tests {
     #[test]
     fn test_gather_git_status() -> Result<(), FuError> {
         let test_repo = PathBuf::from(std::env::var("FU_TEST_REPO")?.to_string());
-        let repo = gather_git_repo(test_repo)?;
+        let repo = gather_git_repo(&test_repo)?;
         full_commit_history(&repo)?;
-        dump_branches(&repo)?;
+        dump_branches(&test_repo)?;
+        get_prompt(&test_repo)?;
 
         let repo_state = get_repo_state(&repo)?;
         println!("{}", repo_state);
 
+        let full_results = get_multi_directory_status(&PathBuf::from(
+            "/Users/Simon/Documents/dataoperations/projects/bics/code/mbtp",
+        ))?;
+        print_repo_table(full_results);
         Ok(())
     }
 }
