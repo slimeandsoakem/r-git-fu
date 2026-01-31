@@ -211,6 +211,12 @@ pub fn print_repo_table(result_option: Option<HashMap<String, RepoStatus>>) {
                             Cell::new(&status.branch_name(false)).fg(Color::Magenta),
                         )
                     }
+                    (true, _, _) | (_, true, _) => {
+                        (
+                            Cell::new(name).fg(Color::Yellow),
+                            Cell::new(&status.branch_name(false)).fg(Color::Yellow),
+                        )
+                    }
                     _ => (
                         Cell::new(name).fg(Color::White),
                         Cell::new(&status.branch_name(false)).fg(Color::White),
