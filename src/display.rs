@@ -1,16 +1,8 @@
 use crate::primitives::FuError;
 use chrono::{DateTime, TimeZone, Utc};
-use std::fmt::Display;
-use std::io::{self, Write};
-
-pub fn safe_println(s: &str) {
-    if let Err(e) = writeln!(io::stdout(), "{}", s) {
-        if e.kind() != io::ErrorKind::BrokenPipe {
-            panic!("stdout error: {}", e);
-        }
-        std::process::exit(0);
-    }
-}
+use comfy_table::modifiers::UTF8_ROUND_CORNERS;
+use comfy_table::presets::{ASCII_BORDERS_ONLY_CONDENSED, NOTHING};
+use comfy_table::Table;
 
 pub fn timestamp_to_datetime(ts: i64) -> Result<DateTime<Utc>, FuError> {
     let timestamp = Utc
@@ -30,14 +22,16 @@ pub fn format_commit_time(ts: i64) -> Result<(String, String), FuError> {
     );
     Ok((iso_date, delta))
 }
-
-pub fn console_dump<T>(outbound_array: Option<Vec<T>>)
-where
-    T: Display,
-{
-    if let Some(vec) = outbound_array {
-        for x in vec {
-            safe_println(&format!("{}", x));
-        }
-    }
+pub fn standard_table_setup(plain_tables: bool) -> Table {
+    let mut table = Table::new();
+    table
+        .set_content_arrangement(comfy_table::ContentArrangement::Dynamic)
+        .apply_modifier(UTF8_ROUND_CORNERS);
+    let table_style = if plain_tables {
+        NOTHING
+    } else {
+        ASCII_BORDERS_ONLY_CONDENSED
+    };
+    table.load_preset(table_style);
+    table
 }
