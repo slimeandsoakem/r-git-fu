@@ -1,10 +1,16 @@
-use crate::primitives::{BranchInfo, BranchState, DirtyState, FuError, Position, RepoStatus};
-use comfy_table::modifiers::UTF8_ROUND_CORNERS;
-use comfy_table::presets::ASCII_BORDERS_ONLY_CONDENSED;
-use comfy_table::{Cell, Color, Table};
-use git2::{BranchType, Reference, Repository};
+use crate::display::standard_table_setup;
+use crate::primitives::{
+    BranchInfo, BranchState, DirtyState, FuError, Position, RemoteStatus, RepoStatus,
+};
+use comfy_table::{Cell, Color};
+use git2::{BranchType, Oid, Reference, Repository};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
+use std::time::Duration;
+use wait_timeout::ChildExt;
+
+const ORIGIN: &str = "origin";
 
 pub fn gather_git_repo(path_buf: &PathBuf) -> Result<Repository, FuError> {
     let git_dir = path_buf.join(".git");
@@ -106,22 +112,99 @@ pub fn get_dirty(repo: &Repository) -> Result<DirtyState, FuError> {
     Ok(dirty)
 }
 
-pub fn get_repo_state(repo: &Repository) -> Result<RepoStatus, FuError> {
+fn fetch_git_with_timeout(repo_path: &str, remote: &str, timeout_ms: u64) -> Result<bool, FuError> {
+    let mut child = Command::new("git")
+        .args(["-C", repo_path, "fetch", "--prune", "--quiet", remote])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+
+    let timeout = Duration::from_millis(timeout_ms);
+
+    match child.wait_timeout(timeout)? {
+        Some(_status) => Ok(true),
+        None => {
+            // timed out → kill process
+            let _ = child.kill();
+            let _ = child.wait();
+            Ok(false)
+        }
+    }
+}
+
+fn get_remote_status(
+    fetch: bool,
+    repo: &Repository,
+    head: &Reference,
+    head_oid: &Oid,
+    timeout_ms: u64,
+) -> Result<Option<RemoteStatus>, FuError> {
+    let work_dir = &repo
+        .workdir()
+        .ok_or(FuError::Custom("Cannot find workdir".to_string()))?
+        .to_str()
+        .ok_or(FuError::Custom(
+            "Cannot convert workdir to string".to_string(),
+        ))?;
+
+    if !head.is_branch() {
+        return Ok(None);
+    }
+
+    let mut refreshed: bool = false;
+
+    if fetch {
+        refreshed = fetch_git_with_timeout(work_dir, ORIGIN, timeout_ms)?;
+    }
+
+    let branch_name = head
+        .shorthand()
+        .ok_or(FuError::Custom("No branch name".to_string()))?;
+    let remote_ref = format!("refs/remotes/{}/{}", ORIGIN, branch_name);
+    let remote_oid = match repo.refname_to_id(&remote_ref) {
+        Ok(oid) => oid,
+        Err(_) => return Ok(None), // upstream not found
+    };
+
+    let (ahead, behind) = repo.graph_ahead_behind(*head_oid, remote_oid)?;
+    let position = Position { ahead, behind };
+    let remote_status = RemoteStatus {
+        position: Some(position),
+        refreshed,
+    };
+
+    Ok(Some(remote_status))
+}
+
+pub fn get_repo_state(
+    repo: &Repository,
+    fetch: bool,
+    remote_status: bool,
+    timeout_ms: u64,
+) -> Result<RepoStatus, FuError> {
     let head = repo.head()?;
     let head_oid = head.target().unwrap();
     let branch = get_branch_state(&head)?;
     let dirty = get_dirty(&repo)?;
     let position = get_position(&head, &repo)?;
+    let remote_status = if remote_status {
+        get_remote_status(fetch, &repo, &head, &head_oid, timeout_ms)?
+    } else {
+        None
+    };
     Ok(RepoStatus {
         branch,
         dirty,
         position,
         head_oid,
+        remote_status,
     })
 }
 
 pub fn get_multi_directory_status(
     path_buf: &PathBuf,
+    fetch: bool,
+    timeout_ms: u64,
 ) -> Result<Option<HashMap<String, RepoStatus>>, FuError> {
     let mut dirs = Vec::new();
     for entry in std::fs::read_dir(path_buf)? {
@@ -132,6 +215,8 @@ pub fn get_multi_directory_status(
         }
     }
 
+    let mut current_fetch_status: bool = fetch;
+
     let mut status_results: HashMap<String, RepoStatus> = HashMap::new();
     for dir in dirs {
         let repo_result = gather_git_repo(&dir);
@@ -141,8 +226,14 @@ pub fn get_multi_directory_status(
         let name = name_osstr.to_string_lossy().to_string();
 
         if let Ok(repo) = repo_result {
-            let repo_status_result = get_repo_state(&repo);
+            let repo_status_result = get_repo_state(&repo, current_fetch_status, true, timeout_ms);
             if let Ok(repo_status) = repo_status_result {
+                current_fetch_status = repo_status
+                    .remote_status
+                    .as_ref()
+                    .map(|remote_status| remote_status.refreshed)
+                    .unwrap_or(true)
+                    && current_fetch_status;
                 status_results.insert(name, repo_status);
             } else {
                 status_results.insert(name, RepoStatus::broken_state("broken-head".to_string()));
@@ -156,22 +247,18 @@ pub fn get_multi_directory_status(
     }
 }
 
-pub fn print_repo_table(result_option: Option<HashMap<String, RepoStatus>>) {
+pub fn print_repo_table(result_option: Option<HashMap<String, RepoStatus>>, plain_tables: bool) {
     if let Some(results) = result_option {
         let mut rows: Vec<_> = results.into_iter().collect();
         rows.sort_by(|a, b| a.0.cmp(&b.0));
-        let mut table = Table::new();
-        table
-            .set_content_arrangement(comfy_table::ContentArrangement::Dynamic)
-            .apply_modifier(UTF8_ROUND_CORNERS);
-        table
-            .load_preset(ASCII_BORDERS_ONLY_CONDENSED)
-            .set_header(vec![
-                Cell::new("Repo"),
-                Cell::new("Branch"),
-                Cell::new("Dirty"),
-                Cell::new("Position"),
-            ]);
+        let mut table = standard_table_setup(plain_tables);
+        table.set_header(vec![
+            Cell::new("Repo"),
+            Cell::new("Branch"),
+            Cell::new("Dirty"),
+            Cell::new("Position"),
+            Cell::new("Remote"),
+        ]);
 
         for (name, status) in rows {
             let dirty_val = if status.dirty.worktree + status.dirty.index == 0 {
@@ -188,7 +275,7 @@ pub fn print_repo_table(result_option: Option<HashMap<String, RepoStatus>>) {
 
             let position_val = match &status.position {
                 Some(pos) if pos.ahead > 0 || pos.behind > 0 => {
-                    format!("↑{} ↓{}", pos.ahead, pos.behind)
+                    format!("↑{}↓{}", pos.ahead, pos.behind)
                 }
                 _ => "".to_string(),
             };
@@ -199,36 +286,77 @@ pub fn print_repo_table(result_option: Option<HashMap<String, RepoStatus>>) {
                 Cell::new(&position_val).fg(Color::Green)
             };
 
-            let (name_cell, branch_cell) =
-                match (dirty_val.is_empty(), position_val.is_empty(), status.head_oid.is_zero()) {
-                    (true, true, false) => {
-                        (Cell::new(name).fg(Color::White),
-                        Cell::new(&status.branch_name(false)).fg(Color::White))
-                    },
-                    (true, true, true) => {
-                        (
-                            Cell::new(name).fg(Color::Magenta),
-                            Cell::new(&status.branch_name(false)).fg(Color::Magenta),
-                        )
+            let remote_cell = match &status.remote_status {
+                Some(remote_position) => {
+                    let string_legend = match &remote_position.position {
+                        Some(pos) if pos.ahead > 0 || pos.behind > 0 => {
+                            format!("↑{}↓{}", pos.ahead, pos.behind)
+                        }
+                        _ => "".to_string(),
+                    };
+                    if remote_position.refreshed {
+                        Cell::new(&string_legend).fg(Color::Green)
+                    } else {
+                        Cell::new(string_legend).fg(Color::Yellow)
                     }
-                    (true, _, _) | (_, true, _) => {
-                        (
-                            Cell::new(name).fg(Color::Yellow),
-                            Cell::new(&status.branch_name(false)).fg(Color::Yellow),
-                        )
-                    }
-                    _ => (
-                        Cell::new(name).fg(Color::White),
-                        Cell::new(&status.branch_name(false)).fg(Color::White),
-                    ),
+                }
+                _ => Cell::new("").fg(Color::Green),
+            };
 
-                };
+            let (name_cell, branch_cell) = match (
+                dirty_val.is_empty(),
+                position_val.is_empty(),
+                status.head_oid.is_zero(),
+            ) {
+                (true, true, false) => (
+                    Cell::new(name).fg(Color::White),
+                    Cell::new(&status.branch_name(false)).fg(Color::White),
+                ),
+                (true, true, true) => (
+                    Cell::new(name).fg(Color::Magenta),
+                    Cell::new(&status.branch_name(false)).fg(Color::Magenta),
+                ),
+                (true, _, _) | (_, true, _) => (
+                    Cell::new(name).fg(Color::Yellow),
+                    Cell::new(&status.branch_name(false)).fg(Color::Yellow),
+                ),
+                _ => (
+                    Cell::new(name).fg(Color::White),
+                    Cell::new(&status.branch_name(false)).fg(Color::White),
+                ),
+            };
 
-            table.add_row(vec![name_cell, branch_cell, dirty_cell, position_cell]);
+            table.add_row(vec![
+                name_cell,
+                branch_cell,
+                dirty_cell,
+                position_cell,
+                remote_cell,
+            ]);
         }
 
         println!("{}", table);
     }
+}
+
+pub fn print_branch_table(branch_summary: Vec<BranchInfo>, plain_tables: bool) {
+    let mut table = standard_table_setup(plain_tables);
+    table.set_header(vec![
+        Cell::new("Last commit"),
+        Cell::new("Age"),
+        Cell::new("Branch name"),
+    ]);
+
+    for branch_info in branch_summary {
+        
+        table.add_row(vec![
+            Cell::new(branch_info.iso_date).fg(Color::Green),
+            Cell::new(branch_info.delta).fg(Color::Blue),
+            Cell::new(branch_info.name).fg(Color::White),
+        ]);
+    }
+
+    println!("{}", table);
 }
 
 #[cfg(test)]
@@ -257,14 +385,24 @@ mod tests {
     }
 
     #[test]
-    fn test_gather_git_status() -> Result<(), FuError> {
+    fn test_gather_git_status_no_fetch() -> Result<(), FuError> {
         let test_repo = PathBuf::from(std::env::var("FU_TEST_REPO")?.to_string());
         let repo = gather_git_repo(&test_repo)?;
         full_commit_history(&repo)?;
-        dump_branches(&test_repo)?;
-        get_prompt(&test_repo)?;
+        dump_branches(&test_repo, false)?;
+        get_prompt(&test_repo, false)?;
 
-        let repo_state = get_repo_state(&repo)?;
+        let repo_state = get_repo_state(&repo, false, false, 0)?;
+        println!("{}", repo_state);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_gather_git_status_with_fetch() -> Result<(), FuError> {
+        let test_repo = PathBuf::from(std::env::var("FU_TEST_REPO")?.to_string());
+        let repo = gather_git_repo(&test_repo)?;
+        let repo_state = get_repo_state(&repo, true, true, 2500)?;
         println!("{}", repo_state);
 
         Ok(())
@@ -282,11 +420,12 @@ mod tests {
                 ahead: 2,
                 behind: 3,
             }),
-            head_oid: git2::Oid::zero(),
+            head_oid: Oid::zero(),
+            remote_status: None,
         };
         let mut sample_output: HashMap<String, RepoStatus> = HashMap::new();
         sample_output.insert("long_name_to_test".to_string(), test_state_row);
-        print_repo_table(Some(sample_output));
+        print_repo_table(Some(sample_output), false);
 
         Ok(())
     }

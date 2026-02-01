@@ -7,11 +7,18 @@ use std::io::Error as IoError;
 use thiserror::Error as ThisError;
 
 #[derive(Debug)]
+pub struct RemoteStatus {
+    pub position: Option<Position>,
+    pub refreshed: bool,
+}
+
+#[derive(Debug)]
 pub struct RepoStatus {
     pub branch: BranchState,
     pub dirty: DirtyState,
     pub position: Option<Position>,
     pub head_oid: git2::Oid,
+    pub remote_status: Option<RemoteStatus>,
 }
 
 impl RepoStatus {
@@ -21,6 +28,7 @@ impl RepoStatus {
             dirty: DirtyState {worktree:0, index:0},
             position: None,
             head_oid: git2::Oid::zero(),
+            remote_status: None,
         }
     }
 
@@ -43,14 +51,27 @@ impl RepoStatus {
         match &self.position {
             Some(pos) => {
                 let mut s = String::new();
+                let (ahead, behind) = pos.string_markers();
                 if pos.ahead > 0 {
-                    s.push_str(&format!("↑{}", pos.ahead).green().to_string());
+                    s.push_str(&ahead.green().to_string());
                 }
                 if pos.behind > 0 {
                     if !s.is_empty() {
                         s.push(' ');
                     }
-                    s.push_str(&format!("↓{}", pos.behind).red().to_string());
+                    s.push_str(&behind.red().to_string());
+                }
+                match &self.remote_status {
+                    Some(remote_status) => {
+                        if let Some(remote_position) = &remote_status.position {
+                            let (remote_ahead, remote_behind) = remote_position.string_markers();
+                            if remote_position.behind > 0 || remote_position.ahead > 0 {
+                                let remote_string = format!("[{}|{}]", remote_ahead, remote_behind);
+                                s.push_str(&remote_string.yellow().to_string());
+                            }
+                        }
+                    }
+                    None => {}
                 }
                 s
             }
@@ -98,6 +119,19 @@ impl Display for RepoStatus {
 pub struct Position {
     pub ahead: usize,
     pub behind: usize,
+}
+
+impl Position {
+    pub fn string_markers(&self) -> (String, String) {
+        let (mut ahead, mut behind) = (String::new(), String::new());
+        if self.ahead > 0 {
+            ahead.push_str(&format!("↑{}", self.ahead));
+        }
+        if self.behind > 0 {
+            behind.push_str(&format!("↓{}", self.behind));
+        }
+        (ahead, behind)
+    }
 }
 
 #[derive(Debug)]
